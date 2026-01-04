@@ -10,14 +10,14 @@ services:
     image: lmsgenres:latest
     container_name: lms-genres
     ports:
-      - "9003:8080"
+      - "9005:8080"
     networks: [lms_network]
 
   lms-books:
     image: lmsbooks:latest
     container_name: lms-books
     ports:
-      - "9005:8080"
+      - "9003:8080"
     networks: [lms_network]
 
 networks:
