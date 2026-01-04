@@ -19,6 +19,10 @@ services:
     ports:
       - "9003:8080"
     networks: [lms_network]
+    environment:
+      - FILES_DIR=/tmp
+    volumes:
+      lms_books_uploads :
 
 networks:
   lms_network:
