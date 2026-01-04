@@ -4,7 +4,7 @@ services:
         image: lmsauthors:latest
         container_name: authors1_in_lms_network
         build:
-            context: .lms-authors
+            context: .
             dockerfile: Dockerfile
         ports:
             - "8090:8080"
@@ -19,7 +19,7 @@ services:
         image: lmsauthors:latest
         container_name: authors2_in_lms_network
         build:
-            context: .lms-authors
+            context: .
             dockerfile: Dockerfile
         ports:
             - "8091:8080"

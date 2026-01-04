@@ -4,10 +4,10 @@ services:
         image: lmsbooks:latest
         container_name: books1_in_lms_network
         build:
-            context: ..
+            context: .
             dockerfile: Dockerfile
         ports:
-            - "8087:8080"
+            - "8087:8088"
         environment:
             SPRING_PROFILES_ACTIVE: instance1,bootstrap
         networks:
@@ -19,7 +19,7 @@ services:
         image: lmsbooks:latest
         container_name: books2_in_lms_network
         build:
-            context: ..
+            context: .
             dockerfile: Dockerfile
         ports:
             - "8088:8080"

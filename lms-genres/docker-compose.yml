@@ -4,10 +4,10 @@ services:
         image: lmsgenres:latest
         container_name: genres1_in_lms_network
         build:
-            context: ..
+            context: .
             dockerfile: Dockerfile
         ports:
-            - "8087:8080"
+            - "8085:8050"
         environment:
             SPRING_PROFILES_ACTIVE: instance1,bootstrap
         networks:
@@ -19,10 +19,10 @@ services:
         image: lmsgenres:latest
         container_name: genres2_in_lms_network
         build:
-            context: ..
+            context: .
             dockerfile: Dockerfile
         ports:
-            - "8088:8080"
+            - "8086:8080"
         environment:
             SPRING_PROFILES_ACTIVE: instance2,bootstrap
         networks:
