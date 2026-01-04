@@ -4,26 +4,32 @@ services:
     container_name: lms-authors
     ports:
       - "9001:8080"
-    networks: [lms_network]
+    networks:
+      - lms_network
 
   lms-genres:
     image: lmsgenres:latest
     container_name: lms-genres
     ports:
       - "9005:8080"
-    networks: [lms_network]
+    networks:
+      - lms_network
 
   lms-books:
     image: lmsbooks:latest
     container_name: lms-books
     ports:
       - "9003:8080"
-    networks: [lms_network]
+    networks:
+      - lms_network
     environment:
-      - FILES_DIR=/tmp
+      FILE_UPLOAD_DIR: /tmp/uploads
     volumes:
-      - lms_books_uploads : /tmp/uploads
+      - lms_books_uploads:/tmp/uploads
 
 networks:
   lms_network:
     external: true
+
+volumes:
+  lms_books_uploads:
