@@ -7,7 +7,7 @@ services:
             context: .
             dockerfile: Dockerfile
         ports:
-            - "8087:8088"
+            - "9003:8088"
         environment:
             SPRING_PROFILES_ACTIVE: instance1,bootstrap
         networks:
@@ -22,7 +22,7 @@ services:
             context: .
             dockerfile: Dockerfile
         ports:
-            - "8088:8080"
+            - "9004:8080"
         environment:
             SPRING_PROFILES_ACTIVE: instance2,bootstrap
         networks:
