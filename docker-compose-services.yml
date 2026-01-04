@@ -22,7 +22,7 @@ services:
     environment:
       - FILES_DIR=/tmp
     volumes:
-      lms_books_uploads :
+      - lms_books_uploads : /tmp/uploads
 
 networks:
   lms_network:
