@@ -1,0 +1,25 @@
+services:
+  lms-authors:
+    image: lmsauthors:latest
+    container_name: lms-authors
+    ports:
+      - "9001:8080"
+    networks: [lms_network]
+
+  lms-genres:
+    image: lmsgenres:latest
+    container_name: lms-genres
+    ports:
+      - "9003:8080"
+    networks: [lms_network]
+
+  lms-books:
+    image: lmsbooks:latest
+    container_name: lms-books
+    ports:
+      - "9005:8080"
+    networks: [lms_network]
+
+networks:
+  lms_network:
+    external: true
