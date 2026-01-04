@@ -1,8 +1,8 @@
 
 services:
-    postgres_in_lms_network:
-        container_name: postgres_in_lms_network
-        image: postgres:latest
+    mysql_in_lms_network:
+        container_name: mysql_in_lms_network
+        image: mysql:latest
         restart: unless-stopped
         ports:
             - "5432:5432"
@@ -39,7 +39,7 @@ services:
 
 networks:
     lms_network:
-        name: lms_network
+        external: true
 
 volumes:
     postgres_volume:
