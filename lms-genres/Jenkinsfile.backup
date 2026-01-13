@@ -1,0 +1,229 @@
+    pipeline {
+        agent any
+
+        environment {
+            // Configuração do Maven no Windows
+            MAVEN_HOME = '/usr/share/maven'
+
+            GIT_REPO_URL = 'https://github.com/leonardogomes3/ODSOFT2024-ProjectP2-1240485-1211239.git/'  // URL do repositório Git
+            GIT_BRANCH = 'main'  // Especifique o branch a ser verificado
+            CREDENTIALS_ID = 'GitHub_CredentialsVM'  // ID das credenciais
+
+            SERVER_PORT = '2226'
+
+            IMAGE_NAME = 'lmsgenres'
+            IMAGE_TAG = 'latest'
+            RECIPIENT_EMAIL = 'odsoft2024@gmail.com'
+
+        }
+
+        stages {
+
+            stage('Debug Environment') {
+                steps {
+                    sh 'printenv'  // Exibe as variáveis de ambiente no Windows
+                }
+            }
+
+            stage('Check Docker') {
+                steps {
+                    sh 'docker --version'  // Verifica se o Docker está instalado e funcionando
+                }
+            }
+
+            stage('Checkout') {
+                steps {
+                    // Etapa para clonar o repositório Git
+                    checkout([$class: 'GitSCM', branches: [[name: "${GIT_BRANCH}"]],
+                              userRemoteConfigs: [[url: "${GIT_REPO_URL}", credentialsId: "${CREDENTIALS_ID}"]]])
+                }
+            }
+
+            stage('Clean') {
+                steps {
+                    dir('lms-authnusers') {
+                        sh "${MAVEN_HOME}/bin/mvn clean"  // Usa o Maven no Ubuntu
+                    }
+                }
+            }
+
+            stage('Package') {
+                steps {
+                    dir('lms-authnusers') {
+                        sh "${MAVEN_HOME}/bin/mvn package"
+                    }
+                }
+            }
+
+            stage('Test') {
+                steps {
+                    dir('lms-authnusers') {
+                        sh "${MAVEN_HOME}/bin/mvn test"
+                    }
+                }
+            }
+
+            stage('Build Docker Image') {
+                steps {
+                    dir('lms-authnusers') {
+                        sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+                    }
+                }
+            }
+
+
+            stage('Create Docker Network') {
+                steps {
+                    script {
+                        sh 'docker network inspect lms_overlay_attachable_network || docker network create --driver overlay --attachable lms_overlay_attachable_network'
+                    }
+                }
+            }
+
+            stage('Start RabbitMQ') {
+                steps {
+                    script {
+                        // Verificar se o contêiner RabbitMQ está em execução
+                        sh '''
+                            if ! docker ps -q -f name=rabbitmq; then
+                                echo "Starting RabbitMQ container"
+                                docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:management
+                            else
+                                echo "RabbitMQ container is already running"
+                            fi
+            
+                            # Verificar se o RabbitMQ já está conectado à rede
+                            if ! docker network inspect lms_overlay_attachable_network -f '{{json .Containers}}' | grep -q "rabbitmq"; then
+                                echo "Connecting RabbitMQ to the network"
+                                docker network connect lms_overlay_attachable_network rabbitmq
+                            else
+                                echo "RabbitMQ is already connected to the network"
+                            fi
+                        '''
+                    }
+                }
+            }
+
+            stage('Notify User for Approval') {
+                steps {
+                    emailext (
+                            subject: "LMSUsers Jenkins Pipeline - Deployment Ready",
+                            body: """The LMSUsers Jenkins pipeline has successfully built and pushed the Docker image.
+                                Please approve the deployment in Jenkins [here](${BUILD_URL}input/) to continue.""",
+                            to: 'odsoft2024@gmail.com'
+                    )
+                }
+            }
+
+            stage('Wait for Approval') {
+                steps {
+                    script {
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                            echo "The pipeline is waiting for your approval. Please click on the link below to proceed or abort the deployment."
+                            def userInput = input(
+                                    message: "Do you want to proceed with the deployment?",
+                                    parameters: [
+                                            choice(name: 'Approve Deployment', choices: ['Yes', 'No'], description: 'Select Yes to continue or No to abort.')
+                                    ]
+                            )
+                            if (userInput == 'No') {
+                                currentBuild.result = 'ABORTED'
+                                error("Deployment aborted by user.")
+                            }
+                        }
+                    }
+                }
+            }
+
+            stage('Deploy with run.sh') {
+                steps {
+                    dir('lms-genres') {
+                        sh 'bash ./runVM.sh 1'  // Executa o script no Ubuntu
+                    }
+                }
+            }
+
+            stage('Scale Up/Down') {
+                steps {
+                    script {
+                        def scaleCount = input(
+                                message: 'How many instances would you like to scale to?',
+                                parameters: [
+                                        choice(name: 'COUNT', choices: ['1', '2', '3', '4', '5'], description: 'Number of instances per service')
+                                ]
+                        )
+
+                        dir('lms-genres') {
+                            sh "bash ./runVM.sh ${scaleCount}"
+                        }
+                    }
+                }
+            }
+
+            stage('Shutdown Microservices with shutdown.sh') {
+                steps {
+                    dir('lms-genres') {
+                        sh 'bash ./shutdown.sh'  // Executa o script no Ubuntu
+                    }
+                }
+            }
+        }
+
+
+        post {
+            success {
+                echo 'Pipeline completed successfully!'
+                echo "Email recipient: ${RECIPIENT_EMAIL}"
+                emailext (
+                        subject: "Service ${IMAGE_NAME} Deployed for Approval - VM Automatic message",
+                        body: """
+                                    Hello,
+
+                                    The service has been deployed successfully.
+
+                                    You can access it using the following link: ${RUN_TESTS_DISPLAY_URL}.
+
+                                    Please review and provide your feedback.
+
+                                    Regards,
+                                    Jenkins
+                                    """,
+                        to: "odsoft2024@gmail.com",
+                        from: "odsoft2024@gmail.com",
+                )
+            }
+            failure {
+                echo 'Pipeline failed!'
+
+                echo "Email recipient: ${RECIPIENT_EMAIL}"
+
+                emailext (
+                        subject: "Pipeline ${IMAGE_NAME} Failed - VM Automatic message",
+                        body: """
+                            Hello,
+
+                            The pipeline execution failed. Please check Jenkins logs for more details.
+
+                            You can access it using the following link: ${RUN_TESTS_DISPLAY_URL}.
+
+                            Regards,
+                            Jenkins
+                            """,
+                        to: "odsoft2024@gmail.com",
+                        from: "odsoft2024@gmail.com",
+                )
+            }
+        }
+
+        // Caso precise limpar os contêineres após a execução
+        /*
+        post {
+            always {
+                echo 'Cleaning up...'
+                bat """
+                    docker-compose -f docker-compose.yml down || echo "Nothing to clean."
+                """
+            }
+        }
+        */
+    }

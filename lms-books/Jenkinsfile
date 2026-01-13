@@ -1,226 +1,382 @@
-    pipeline {
-        agent any
+pipeline {
+    agent any
 
-        environment {
-            // Configuração do Maven no Windows
-            MAVEN_HOME = '/usr/share/maven'
+    environment {
+        MAVEN_HOME = '/usr/share/maven'
+        PATH = "$PATH:$MAVEN_HOME/bin"
 
-            GIT_REPO_URL = 'https://github.com/leonardogomes3/ODSOFT2024-ProjectP2-1240485-1211239.git/'  // URL do repositório Git
-            GIT_BRANCH = 'main'  // Especifique o branch a ser verificado
-            CREDENTIALS_ID = 'GitHub_CredentialsVM'  // ID das credenciais
+        GIT_REPO_URL = 'https://github.com/1201198luissilva/psoft-project-2025-26-m1d-lm.git'
+        GIT_BRANCH = 'main'
+        CREDENTIALS_ID = 'github-token'
 
-            SERVER_PORT = '2226'
+        SERVICE_NAME = 'lms-books'
+        IMAGE_NAME = 'lmsbooks'
+        IMAGE_TAG = 'latest'
+        SERVER_PORT = '8092'
+        
+        RECIPIENT_EMAIL = 'ljsilva.2002@gmail.com'
+        NETWORK_NAME = 'lms_network'
+    }
 
-            IMAGE_NAME = 'lmsbooks'
-            IMAGE_TAG = 'latest'
-            RECIPIENT_EMAIL = 'odsoft2024@gmail.com'
+    stages {
 
-        }
-        stages {
-
-            stage('Debug Environment') {
-                steps {
-                    sh 'printenv'  // Exibe as variáveis de ambiente no Windows
-                }
-            }
-
-            stage('Check Docker') {
-                steps {
-                    sh 'docker --version'  // Verifica se o Docker está instalado e funcionando
-                }
-            }
-
-            stage('Checkout') {
-                steps {
-                    // Etapa para clonar o repositório Git
-                    checkout([$class: 'GitSCM', branches: [[name: "${GIT_BRANCH}"]],
-                              userRemoteConfigs: [[url: "${GIT_REPO_URL}", credentialsId: "${CREDENTIALS_ID}"]]])
-                }
-            }
-
-            stage('Clean') {
-                steps {
-                    dir('lms-books') {
-                        sh "${MAVEN_HOME}/bin/mvn clean"  // Usa o Maven no Ubuntu
-                    }
-                }
-            }
-
-            stage('Package') {
-                steps {
-                    dir('lms-books') {
-                        sh "${MAVEN_HOME}/bin/mvn package"
-                    }
-                }
-            }
-
-            stage('Test') {
-                steps {
-                    dir('lms-books') {
-                        sh "${MAVEN_HOME}/bin/mvn test"
-                    }
-                }
-            }
-
-            stage('Build Docker Image') {
-                steps {
-                    dir('lms-books') {
-                        sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
-                    }
-                }
-            }
-
-
-            stage('Create Docker Network') {
-                steps {
-                    script {
-                        sh 'docker network inspect lms_overlay_attachable_network || docker network create --driver overlay --attachable lms_overlay_attachable_network'
-                    }
-                }
-            }
-
-            stage('Start RabbitMQ') {
-                steps {
-                    script {
-                        // Verificar se o contêiner RabbitMQ está em execução
-                        sh '''
-                            if ! docker ps -q -f name=rabbitmq; then
-                                echo "Starting RabbitMQ container"
-                                docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:management
-                            else
-                                echo "RabbitMQ container is already running"
-                            fi
-            
-                            # Verificar se o RabbitMQ já está conectado à rede
-                            if ! docker network inspect lms_overlay_attachable_network -f '{{json .Containers}}' | grep -q "rabbitmq"; then
-                                echo "Connecting RabbitMQ to the network"
-                                docker network connect lms_overlay_attachable_network rabbitmq
-                            else
-                                echo "RabbitMQ is already connected to the network"
-                            fi
-                        '''
-                    }
-                }
-            }
-            stage('Notify User for Approval') {
-                steps {
-                    emailext (
-                            subject: "LMSUsers Jenkins Pipeline - Deployment Ready",
-                            body: """The LMSUsers Jenkins pipeline has successfully built and pushed the Docker image.
-                                Please approve the deployment in Jenkins [here](${BUILD_URL}input/) to continue.""",
-                            to: 'odsoft2024@gmail.com'
-                    )
-                }
-            }
-
-            stage('Wait for Approval') {
-                steps {
-                    script {
-                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                            echo "The pipeline is waiting for your approval. Please click on the link below to proceed or abort the deployment."
-                            def userInput = input(
-                                    message: "Do you want to proceed with the deployment?",
-                                    parameters: [
-                                            choice(name: 'Approve Deployment', choices: ['Yes', 'No'], description: 'Select Yes to continue or No to abort.')
-                                    ]
-                            )
-                            if (userInput == 'No') {
-                                currentBuild.result = 'ABORTED'
-                                error("Deployment aborted by user.")
-                            }
-                        }
-                    }
-                }
-            }
-
-            stage('Deploy with run.sh') {
-                steps {
-                    dir('lms-books') {
-                        sh 'bash ./runVM.sh 1'  // Executa o script no Ubuntu
-                    }
-                }
-            }
-
-            stage('Scale Up/Down') {
-                steps {
-                    script {
-                        def scaleCount = input(
-                                message: 'How many instances would you like to scale to?',
-                                parameters: [
-                                        choice(name: 'COUNT', choices: ['1', '2', '3', '4', '5'], description: 'Number of instances per service')
-                                ]
-                        )
-
-                        dir('lms-books') {
-                            sh "bash ./runVM.sh ${scaleCount}"
-                        }
-                    }
-                }
-            }
-
-            stage('Shutdown Microservices with shutdown.sh') {
-                steps {
-                    dir('lms-books') {
-                        sh 'bash ./shutdown.sh'  // Executa o script no Ubuntu
-                    }
-                }
+        stage('Debug Environment') {
+            steps {
+                echo 'Exibindo variáveis de ambiente...'
+                sh 'printenv'
             }
         }
 
-        post {
-            success {
-                echo 'Pipeline completed successfully!'
-                echo "Email recipient: ${RECIPIENT_EMAIL}"
-                emailext (
-                        subject: "Service ${IMAGE_NAME} Deployed for Approval - VM Automatic message",
-                        body: """
-                                    Hello,
-
-                                    The service has been deployed successfully.
-
-                                    You can access it using the following link: ${RUN_TESTS_DISPLAY_URL}.
-
-                                    Please review and provide your feedback.
-
-                                    Regards,
-                                    Jenkins
-                                    """,
-                        to: "odsoft2024@gmail.com",
-                        from: "odsoft2024@gmail.com",
-                )
-            }
-            failure {
-                echo 'Pipeline failed!'
-
-                echo "Email recipient: ${RECIPIENT_EMAIL}"
-
-                emailext (
-                        subject: "Pipeline ${IMAGE_NAME} Failed - VM Automatic message",
-                        body: """
-                            Hello,
-
-                            The pipeline execution failed. Please check Jenkins logs for more details.
-
-                            You can access it using the following link: ${RUN_TESTS_DISPLAY_URL}.
-
-                            Regards,
-                            Jenkins
-                            """,
-                        to: "odsoft2024@gmail.com",
-                        from: "odsoft2024@gmail.com",
-                )
+        stage('Check Docker') {
+            steps {
+                echo 'Verificando Docker...'
+                sh 'docker --version'
+                sh 'docker ps'
             }
         }
 
-        // Caso precise limpar os contêineres após a execução
-        /*
-        post {
-            always {
-                echo 'Cleaning up...'
-                bat """
-                    docker-compose -f docker-compose.yml down || echo "Nothing to clean."
+        stage('Checkout') {
+            steps {
+                echo 'Clonando código do repositório...'
+                checkout([$class: 'GitSCM', 
+                          branches: [[name: "${GIT_BRANCH}"]], 
+                          userRemoteConfigs: [[url: "${GIT_REPO_URL}", credentialsId: "${CREDENTIALS_ID}"]]])
+            }
+        }
+
+        stage('Validate') {
+            steps {
+                echo 'Validando estrutura do projeto...'
+                sh """
+                    if [ ! -d "${SERVICE_NAME}" ]; then
+                        echo "Erro: Diretório ${SERVICE_NAME} não encontrado"
+                        exit 1
+                    fi
+                    if [ ! -f "${SERVICE_NAME}/pom.xml" ]; then
+                        echo "Erro: pom.xml não encontrado em ${SERVICE_NAME}"
+                        exit 1
+                    fi
+                    echo "Validação concluída com sucesso"
                 """
             }
         }
-        */
+
+        stage('Clean') {
+            steps {
+                echo 'Limpando projeto...'
+                dir("${SERVICE_NAME}") {
+                    sh 'mvn clean'
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                echo 'Compilando e empacotando projeto...'
+                dir("${SERVICE_NAME}") {
+                    sh 'mvn package -DskipTests'
+                }
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: "${SERVICE_NAME}/target/*.jar", fingerprint: true
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Executando testes unitários...'
+                dir("${SERVICE_NAME}") {
+                    sh 'mvn test'
+                }
+            }
+            post {
+                always {
+                    junit "${SERVICE_NAME}/target/surefire-reports/*.xml"
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo "Construindo imagem Docker ${IMAGE_NAME}:${IMAGE_TAG}..."
+                dir("${SERVICE_NAME}") {
+                    sh """
+                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                        docker images | grep ${IMAGE_NAME}
+                    """
+                }
+            }
+        }
+
+        stage('Create Docker Network') {
+            steps {
+                echo "Verificando e criando rede Docker ${NETWORK_NAME}..."
+                script {
+                    sh """
+                        # Verificar se a rede existe
+                        if ! docker network inspect ${NETWORK_NAME} > /dev/null 2>&1; then
+                            echo "Criando rede bridge para Docker Compose..."
+                            docker network create ${NETWORK_NAME}
+                        else
+                            echo "Rede ${NETWORK_NAME} já existe"
+                        fi
+                        
+                        # Verificar configuração da rede
+                        docker network inspect ${NETWORK_NAME}
+                    """
+                }
+            }
+        }
+
+        stage('Start RabbitMQ') {
+            steps {
+                echo 'Iniciando RabbitMQ...'
+                script {
+                    sh """
+                        # Verificar e iniciar RabbitMQ
+                        if ! docker ps -q -f name=rabbitmq > /dev/null 2>&1; then
+                            echo "Iniciando container RabbitMQ..."
+                            docker run -d --name rabbitmq \\
+                                -p 5672:5672 -p 15672:15672 \\
+                                --network ${NETWORK_NAME} \\
+                                rabbitmq:management
+                            sleep 10
+                        else
+                            echo "RabbitMQ já está em execução"
+                            # Conectar à rede se necessário
+                            if ! docker network inspect ${NETWORK_NAME} -f '{{json .Containers}}' | grep -q 'rabbitmq'; then
+                                echo "Conectando RabbitMQ à rede..."
+                                docker network connect ${NETWORK_NAME} rabbitmq
+                            fi
+                        fi
+                        
+                        # Verificar status
+                        docker ps | grep rabbitmq
+                    """
+                }
+            }
+        }
+
+        stage('Notify User for Approval') {
+            steps {
+                echo 'Enviando notificação de aprovação...'
+                emailext (
+                    subject: "${SERVICE_NAME} Jenkins Pipeline - Deployment Ready",
+                    body: """A pipeline do ${SERVICE_NAME} foi executada com sucesso e está pronta para deploy.
+                        
+                        Aprovação necessária em: ${BUILD_URL}input/
+                        
+                        Serviço: ${SERVICE_NAME}
+                        Imagem: ${IMAGE_NAME}:${IMAGE_TAG}""",
+                    to: "${RECIPIENT_EMAIL}"
+                )
+            }
+        }
+
+        stage('Wait for Approval') {
+            steps {
+                script {
+                    catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                        echo "Aguardando aprovação do usuário..."
+                        def userInput = input(
+                            message: "Deseja prosseguir com o deployment do ${SERVICE_NAME}?",
+                            parameters: [
+                                choice(name: 'Approve Deployment', 
+                                       choices: ['Yes', 'No'], 
+                                       description: 'Selecione Yes para continuar ou No para cancelar.')
+                            ]
+                        )
+                        if (userInput == 'No') {
+                            currentBuild.result = 'ABORTED'
+                            error("Deployment cancelado pelo usuário.")
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Deploy with Docker Compose') {
+            steps {
+                echo 'Executando deployment com Docker Compose...'
+                dir("${SERVICE_NAME}") {
+                    sh """
+                        if [ -f docker-compose.yml ]; then
+                            # Backup da versão atual (se existir)
+                            echo "=== BACKUP DA VERSÃO ANTERIOR ==="
+                            if docker images | grep -q "${IMAGE_NAME}:${IMAGE_TAG}"; then
+                                docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:rollback || true
+                                echo "Backup criado: ${IMAGE_NAME}:rollback"
+                            else
+                                echo "Nenhuma versão anterior encontrada para backup"
+                            fi
+                            
+                            # Parar containers antigos
+                            docker-compose down || true
+                            
+                            # Iniciar nova versão
+                            echo "=== DEPLOYMENT DA NOVA VERSÃO ==="
+                            docker-compose up -d --build
+                            
+                            # Aguardar serviços iniciarem
+                            echo "Aguardando inicialização dos serviços..."
+                            sleep 15
+                            
+                            # Health Check
+                            echo "=== EXECUTANDO HEALTH CHECK ==="
+                            HEALTH_CHECK_FAILED=0
+                            
+                            # Testar instância 1 (porta 9003)
+                            if curl -f -s -o /dev/null -w "%{http_code}" http://localhost:9003/actuator/health | grep -q "200"; then
+                                echo "✓ Instância 1 (porta 9003) - SAUDÁVEL"
+                            else
+                                echo "✗ Instância 1 (porta 9003) - FALHA NO HEALTH CHECK"
+                                HEALTH_CHECK_FAILED=1
+                            fi
+                            
+                            # Testar instância 2 (porta 9004) se existir
+                            if docker-compose ps | grep -q "books2_in_lms_network"; then
+                                if curl -f -s -o /dev/null -w "%{http_code}" http://localhost:9004/actuator/health | grep -q "200"; then
+                                    echo "✓ Instância 2 (porta 9004) - SAUDÁVEL"
+                                else
+                                    echo "✗ Instância 2 (porta 9004) - FALHA NO HEALTH CHECK"
+                                    HEALTH_CHECK_FAILED=1
+                                fi
+                            fi
+                            
+                            # Rollback se health check falhou
+                            if [ \$HEALTH_CHECK_FAILED -eq 1 ]; then
+                                echo "=== INICIANDO ROLLBACK AUTOMÁTICO ==="
+                                
+                                if docker images | grep -q "${IMAGE_NAME}:rollback"; then
+                                    echo "Parando versão com falha..."
+                                    docker-compose down
+                                    
+                                    echo "Restaurando versão anterior..."
+                                    docker tag ${IMAGE_NAME}:rollback ${IMAGE_NAME}:${IMAGE_TAG}
+                                    
+                                    echo "Reiniciando com versão anterior..."
+                                    docker-compose up -d
+                                    sleep 10
+                                    
+                                    echo "=== ROLLBACK CONCLUÍDO ==="
+                                    echo "Serviço foi revertido para a versão anterior"
+                                    
+                                    # Verificar se rollback funcionou
+                                    if curl -f -s -o /dev/null http://localhost:9003/actuator/health; then
+                                        echo "✓ Versão anterior está funcionando corretamente"
+                                    else
+                                        echo "✗ ALERTA: Versão anterior também apresentou problemas"
+                                    fi
+                                    
+                                    exit 1
+                                else
+                                    echo "✗ Nenhuma versão anterior disponível para rollback"
+                                    docker-compose down
+                                    exit 1
+                                fi
+                            else
+                                echo "=== DEPLOYMENT CONCLUÍDO COM SUCESSO ==="
+                                docker-compose ps
+                            fi
+                        else
+                            echo "Erro: docker-compose.yml não encontrado"
+                            exit 1
+                        fi
+                    """
+                }
+            }
+        }
+
+        stage('Scale Services') {
+            steps {
+                script {
+                    def scaleCount = input(
+                        message: 'Quantas instâncias deseja executar?',
+                        parameters: [
+                            choice(name: 'COUNT', 
+                                   choices: ['1', '2'], 
+                                   description: 'Número de instâncias (1 ou 2 conforme docker-compose.yml)')
+                        ]
+                    )
+
+                    echo "Configurando para ${scaleCount} instâncias..."
+                    dir("${SERVICE_NAME}") {
+                        sh """
+                            if [ "${scaleCount}" = "1" ]; then
+                                docker-compose up -d lmsbooks_1
+                                docker-compose stop lmsbooks_2 || true
+                            else
+                                docker-compose up -d lmsbooks_1 lmsbooks_2
+                            fi
+                            docker-compose ps
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Shutdown Services') {
+            steps {
+                echo 'Desligando serviços com Docker Compose...'
+                dir("${SERVICE_NAME}") {
+                    sh """
+                        if [ -f docker-compose.yml ]; then
+                            docker-compose down
+                            echo "Serviços desligados com sucesso"
+                        else
+                            echo "Aviso: docker-compose.yml não encontrado"
+                        fi
+                    """
+                }
+            }
+        }
     }
+
+    post {
+        success {
+            echo "✓ Pipeline ${SERVICE_NAME} concluída com sucesso!"
+            emailext (
+                subject: "✓ ${SERVICE_NAME} Deployed Successfully - Automatic message",
+                body: """
+                    Olá,
+
+                    O serviço ${SERVICE_NAME} foi deployado com sucesso.
+
+                    Imagem: ${IMAGE_NAME}:${IMAGE_TAG}
+                    Porta: ${SERVER_PORT}
+                    Build: ${BUILD_URL}
+
+                    Atenciosamente,
+                    Jenkins
+                """,
+                to: "${RECIPIENT_EMAIL}",
+                from: "${RECIPIENT_EMAIL}"
+            )
+        }
+        failure {
+            echo "✗ Pipeline ${SERVICE_NAME} falhou!"
+            emailext (
+                subject: "✗ ${SERVICE_NAME} Pipeline Failed - Automatic message",
+                body: """
+                    Olá,
+
+                    A execução da pipeline do ${SERVICE_NAME} falhou.
+
+                    Por favor, verifique os logs em: ${BUILD_URL}console
+
+                    Serviço: ${SERVICE_NAME}
+                    
+                    Atenciosamente,
+                    Jenkins
+                """,
+                to: "${RECIPIENT_EMAIL}",
+                from: "${RECIPIENT_EMAIL}"
+            )
+        }
+        always {
+            echo 'Pipeline finalizada'
+        }
+    }
+}
