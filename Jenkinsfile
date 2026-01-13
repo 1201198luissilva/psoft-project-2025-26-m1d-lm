@@ -12,7 +12,7 @@ pipeline {
     environment {
         MAVEN_HOME = "/usr/share/maven"
         PATH = "$PATH:$MAVEN_HOME/bin"
-        COMPOSE_FILE = "docker-compose-services.yml"
+        COMPOSE_FILE = "docker compose-services.yml"
     }
 
     stages {
@@ -88,8 +88,8 @@ pipeline {
                 sh '''
                 # Para evitar conflito de portas
                 pkill -f "psoft-g1.*dev" || true
-                docker-compose -f docker-compose-staging.yml down || true
-                docker-compose -f docker-compose-staging.yml up -d --build
+                docker compose -f docker compose-staging.yml down || true
+                docker compose -f docker compose-staging.yml up -d --build
                 '''
             }
         }

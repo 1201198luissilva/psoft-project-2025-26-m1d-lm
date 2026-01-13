@@ -204,7 +204,7 @@ pipeline {
                 echo 'Executando deployment com Docker Compose...'
                 dir("${SERVICE_NAME}") {
                     sh """
-                        if [ -f docker-compose.yml ]; then
+                        if [ -f docker compose.yml ]; then
                             # Backup da versão atual (se existir)
                             echo "=== BACKUP DA VERSÃO ANTERIOR ==="
                             if docker images | grep -q "${IMAGE_NAME}:${IMAGE_TAG}"; then
@@ -215,11 +215,11 @@ pipeline {
                             fi
                             
                             # Parar containers antigos
-                            docker-compose down || true
+                            docker compose down || true
                             
                             # Iniciar nova versão
                             echo "=== DEPLOYMENT DA NOVA VERSÃO ==="
-                            docker-compose up -d --build
+                            docker compose up -d --build
                             
                             # Aguardar serviços iniciarem
                             echo "Aguardando inicialização dos serviços..."
@@ -240,7 +240,7 @@ pipeline {
                             fi
                             
                             # Testar instância 2 se existir
-                            if docker-compose ps | grep -q "genres2_in_lms_network"; then
+                            if docker compose ps | grep -q "genres2_in_lms_network"; then
                                 HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://genres2_in_lms_network:8080/actuator/health)
                                 echo "Status code instância 2: \$HTTP_CODE"
                                 if [ "\$HTTP_CODE" = "200" ]; then
@@ -257,13 +257,13 @@ pipeline {
                                 
                                 if docker images | grep -q "${IMAGE_NAME}:rollback"; then
                                     echo "Parando versão com falha..."
-                                    docker-compose down
+                                    docker compose down
                                     
                                     echo "Restaurando versão anterior..."
                                     docker tag ${IMAGE_NAME}:rollback ${IMAGE_NAME}:${IMAGE_TAG}
                                     
                                     echo "Reiniciando com versão anterior..."
-                                    docker-compose up -d
+                                    docker compose up -d
                                     sleep 10
                                     
                                     echo "=== ROLLBACK CONCLUÍDO ==="
@@ -279,15 +279,15 @@ pipeline {
                                     exit 1
                                 else
                                     echo "✗ Nenhuma versão anterior disponível para rollback"
-                                    docker-compose down
+                                    docker compose down
                                     exit 1
                                 fi
                             else
                                 echo "=== DEPLOYMENT CONCLUÍDO COM SUCESSO ==="
-                                docker-compose ps
+                                docker compose ps
                             fi
                         else
-                            echo "Erro: docker-compose.yml não encontrado"
+                            echo "Erro: docker compose.yml não encontrado"
                             exit 1
                         fi
                     """
@@ -303,7 +303,7 @@ pipeline {
                         parameters: [
                             choice(name: 'COUNT', 
                                    choices: ['1', '2'], 
-                                   description: 'Número de instâncias (1 ou 2 conforme docker-compose.yml)')
+                                   description: 'Número de instâncias (1 ou 2 conforme docker compose.yml)')
                         ]
                     )
 
@@ -311,12 +311,12 @@ pipeline {
                     dir("${SERVICE_NAME}") {
                         sh """
                             if [ "${scaleCount}" = "1" ]; then
-                                docker-compose up -d lmsgenres_1
-                                docker-compose stop lmsgenres_2 || true
+                                docker compose up -d lmsgenres_1
+                                docker compose stop lmsgenres_2 || true
                             else
-                                docker-compose up -d lmsgenres_1 lmsgenres_2
+                                docker compose up -d lmsgenres_1 lmsgenres_2
                             fi
-                            docker-compose ps
+                            docker compose ps
                         """
                     }
                 }
@@ -328,11 +328,11 @@ pipeline {
                 echo 'Desligando serviços com Docker Compose...'
                 dir("${SERVICE_NAME}") {
                     sh """
-                        if [ -f docker-compose.yml ]; then
-                            docker-compose down
+                        if [ -f docker compose.yml ]; then
+                            docker compose down
                             echo "Serviços desligados com sucesso"
                         else
-                            echo "Aviso: docker-compose.yml não encontrado"
+                            echo "Aviso: docker compose.yml não encontrado"
                         fi
                     """
                 }
