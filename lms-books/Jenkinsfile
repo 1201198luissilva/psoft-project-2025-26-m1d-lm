@@ -229,24 +229,24 @@ pipeline {
                             echo "=== EXECUTANDO HEALTH CHECK ==="
                             HEALTH_CHECK_FAILED=0
                             
-                            # Testar instância 1 (porta 9003)
-                            HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9003/actuator/health)
+                            # Testar instância 1 via container name (porta interna 8080)
+                            HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://books1_in_lms_network:8080/actuator/health)
                             echo "Status code instância 1: \$HTTP_CODE"
                             if [ "\$HTTP_CODE" = "200" ]; then
-                                echo "✓ Instância 1 (porta 9003) - SAUDÁVEL"
+                                echo "✓ Instância 1 (books1_in_lms_network:8080) - SAUDÁVEL"
                             else
-                                echo "✗ Instância 1 (porta 9003) - FALHA NO HEALTH CHECK"
+                                echo "✗ Instância 1 (books1_in_lms_network:8080) - FALHA NO HEALTH CHECK"
                                 HEALTH_CHECK_FAILED=1
                             fi
                             
-                            # Testar instância 2 (porta 9004) se existir
+                            # Testar instância 2 se existir
                             if docker-compose ps | grep -q "books2_in_lms_network"; then
-                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9004/actuator/health)
+                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://books2_in_lms_network:8080/actuator/health)
                                 echo "Status code instância 2: \$HTTP_CODE"
                                 if [ "\$HTTP_CODE" = "200" ]; then
-                                    echo "✓ Instância 2 (porta 9004) - SAUDÁVEL"
+                                    echo "✓ Instância 2 (books2_in_lms_network:8080) - SAUDÁVEL"
                                 else
-                                    echo "✗ Instância 2 (porta 9004) - FALHA NO HEALTH CHECK"
+                                    echo "✗ Instância 2 (books2_in_lms_network:8080) - FALHA NO HEALTH CHECK"
                                     HEALTH_CHECK_FAILED=1
                                 fi
                             fi
