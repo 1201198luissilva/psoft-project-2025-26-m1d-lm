@@ -230,7 +230,10 @@ pipeline {
                             HEALTH_CHECK_FAILED=0
                             
                             # Testar instância 1 (tentar container name primeiro, depois localhost)
-                            HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://books1_in_lms_network:8080/actuator/health 2>/dev/null || curl -s -o /dev/null -w "%{http_code}" http://localhost:9003/actuator/health)
+                            HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 http://books1_in_lms_network:8080/actuator/health 2>/dev/null)
+                            if [ "\$HTTP_CODE" = "000" ]; then
+                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9003/actuator/health)
+                            fi
                             echo "Status code instância 1: \$HTTP_CODE"
                             if [ "\$HTTP_CODE" = "200" ]; then
                                 echo "✓ Instância 1 (porta 9003) - SAUDÁVEL"
@@ -241,7 +244,10 @@ pipeline {
                             
                             # Testar instância 2 se existir
                             if docker compose ps | grep -q "books2_in_lms_network"; then
-                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://books2_in_lms_network:8080/actuator/health 2>/dev/null || curl -s -o /dev/null -w "%{http_code}" http://localhost:9004/actuator/health)
+                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 http://books2_in_lms_network:8080/actuator/health 2>/dev/null)
+                                if [ "\$HTTP_CODE" = "000" ]; then
+                                    HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9004/actuator/health)
+                                fi
                                 echo "Status code instância 2: \$HTTP_CODE"
                                 if [ "\$HTTP_CODE" = "200" ]; then
                                     echo "✓ Instância 2 (porta 9004) - SAUDÁVEL"
