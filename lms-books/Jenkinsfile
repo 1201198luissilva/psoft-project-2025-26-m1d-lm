@@ -136,9 +136,9 @@ pipeline {
                 script {
                     sh """
                         # Verificar e iniciar RabbitMQ
-                        if ! docker ps -q -f name=rabbitmq > /dev/null 2>&1; then
+                        if ! docker ps -q -f name=rabbitmq_in_lms_network > /dev/null 2>&1; then
                             echo "Iniciando container RabbitMQ..."
-                            docker run -d --name rabbitmq \\
+                            docker run -d --name rabbitmq_in_lms_network \\
                                 -p 5672:5672 -p 15672:15672 \\
                                 --network ${NETWORK_NAME} \\
                                 rabbitmq:management
@@ -146,9 +146,9 @@ pipeline {
                         else
                             echo "RabbitMQ já está em execução"
                             # Conectar à rede se necessário
-                            if ! docker network inspect ${NETWORK_NAME} -f '{{json .Containers}}' | grep -q 'rabbitmq'; then
+                            if ! docker network inspect ${NETWORK_NAME} -f '{{json .Containers}}' | grep -q 'rabbitmq_in_lms_network'; then
                                 echo "Conectando RabbitMQ à rede..."
-                                docker network connect ${NETWORK_NAME} rabbitmq
+                                docker network connect ${NETWORK_NAME} rabbitmq_in_lms_network
                             fi
                         fi
                         

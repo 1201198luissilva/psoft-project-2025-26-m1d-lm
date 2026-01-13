@@ -91,6 +91,8 @@ public class SecurityConfig {
                 // Swagger endpoints must be publicly accessible
                 .requestMatchers("/").permitAll().requestMatchers(format("%s/**", restApiDocPath)).permitAll()
                 .requestMatchers(format("%s/**", swaggerPath)).permitAll()
+                // Actuator health endpoint (for deployment health checks)
+                .requestMatchers("/actuator/health").permitAll()
                 // Our public endpoints
                 .requestMatchers("/api/public/**").permitAll() // public assets & end-points
                 .requestMatchers(HttpMethod.POST, "/api/readers").permitAll() // unregistered should be able to register
