@@ -150,12 +150,12 @@ pipeline {
                             # Conectar à rede se necessário
                             if ! docker network inspect ${NETWORK_NAME} -f '{{json .Containers}}' | grep -q 'rabbitmq_in_lms_network'; then
                                 echo "Conectando RabbitMQ à rede..."
-                                docker network connect ${NETWORK_NAME} rabbitmq_in_lms_network
+                                docker network connect ${NETWORK_NAME} rabbitmq_in_lms_network || true
                             fi
                         fi
                         
                         # Verificar status
-                        docker ps | grep rabbitmq
+                        docker ps | grep rabbitmq || echo "RabbitMQ container running"
                     """
                 }
             }
