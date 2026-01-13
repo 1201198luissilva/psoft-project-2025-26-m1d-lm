@@ -1,9 +1,18 @@
 pipeline {
     agent any
 
+    parameters {
+        choice(
+        name: 'SERVICE',
+        choices: ['lms-authors', 'lms-genres', 'lms-books'],
+        description: 'Serviço a buildar e redeploy'
+        )
+    }
+
     environment {
         MAVEN_HOME = "/usr/share/maven"
         PATH = "$PATH:$MAVEN_HOME/bin"
+        COMPOSE_FILE = "docker-compose-services.yml"
     }
 
     stages {
@@ -14,10 +23,13 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Build JAR Maven') {
             steps {
                 echo 'A compilar e a gerar o pacote do projeto...'
-                sh 'mvn clean package -DskipTests'
+                sh '''
+                    cd ${SERVICE}
+                    mvn -DskipTests clean package
+                    '''
             }
         }
 
@@ -48,6 +60,18 @@ pipeline {
             }
         }
 
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                cd ${SERVICE}
+                if [ "${SERVICE}" = "lms-authors" ]; then IMG="lmsauthors"; fi
+                if [ "${SERVICE}" = "lms-genres" ]; then IMG="lmsgenres"; fi
+                if [ "${SERVICE}" = "lms-books"  ]; then IMG="lmsbooks";  fi
+                docker build -t ${IMG}:latest .
+                '''
+            }
+        }
+        
         stage('Deploy - DEV (local)') {
             steps {
                 echo 'Deploy ambiente DEV (H2 em memória)...'

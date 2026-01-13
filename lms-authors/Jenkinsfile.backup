@@ -1,0 +1,241 @@
+    pipeline {
+        agent any
+
+        environment {
+        MAVEN_HOME = '/usr/share/maven'
+        PATH = "$PATH:$MAVEN_HOME/bin"
+
+        SERVICE_NAME = 'lms-authors'
+        IMAGE_NAME = 'lmsauthors'
+        IMAGE_TAG = 'latest'
+        SERVER_PORT = '8090'
+        
+        RECIPIENT_EMAIL = 'ljsilva.2002@gmail.com'
+        NETWORK_NAME = 'lms_overlay_attachable_network'
+
+        stages {
+
+            stage('Debug Environment') {
+                steps {
+                    sh 'printenv'  // Exibe as variáveis de ambiente 
+                }
+            }
+
+            stage('Check Docker') {
+                steps {
+                    sh 'docker --version'  // Verifica se o Docker está instalado e funcionando
+                }
+            }
+
+            stage('Checkout') {
+                steps {
+                echo 'Clonando código do repositório...'
+                checkout scm
+
+            stage('Clean') {
+                steps {
+                echo 'Limpando projeto...'
+                dir("${SERVICE_NAME}") {
+                    sh 'mvn clean'
+            }
+
+            stage('Package') {
+                steps {
+                echo 'Compilando e empacotando projeto...'
+                dir("${SERVICE_NAME}") {
+                    sh 'mvn package -DskipTests'
+                }
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: "${SERVICE_NAME}/target/*.jar", fingerprint: true
+            }
+
+            stage('Test') {
+                steps {
+                echo 'Executando testes unitários...'
+                dir("${SERVICE_NAME}") {
+                    sh 'mvn test'
+                }
+            }
+            post {
+                always {
+                    junit "${SERVICE_NAME}/target/surefire-reports/*.xml"
+            }
+
+            stage('Build Docker Image') {
+                steps {
+                echo "Construindo imagem Docker ${IMAGE_NAME}:${IMAGE_TAG}..."
+                dir("${SERVICE_NAME}") {
+                    sh """
+                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                        docker images | grep ${IMAGE_NAME}
+                    """
+            }
+
+
+            stage('Create Docker Network') {
+                steps {
+                echo "Criando rede Docker ${NETWORK_NAME}..."
+                script {
+                    sh """
+                        docker network inspect ${NETWORK_NAME} > /dev/null 2>&1 || \
+                        docker network create --driver overlay --attachable ${NETWORK_NAME}
+                        echo 'Rede Docker pronta'
+                    """
+            }
+
+            stage('Start RabbitMQ') {
+                steps {
+                echo 'Iniciando RabbitMQ...'
+                script {
+                    sh """
+                        # Verificar e iniciar RabbitMQ
+                        if ! docker ps -q -f name=rabbitmq > /dev/null 2>&1; then
+                            echo "Iniciando container RabbitMQ..."
+                            docker run -d --name rabbitmq \
+                                -p 5672:5672 -p 15672:15672 \
+                                --network ${NETWORK_NAME} \
+                                rabbitmq:management
+                            sleep 10
+                        else
+                            echo "RabbitMQ já está em execução"
+                            # Conectar à rede se necessário
+                            if ! docker network inspect ${NETWORK_NAME} -f '{{json .Containers}}' | grep -q 'rabbitmq'; then
+                                echo "Conectando RabbitMQ à rede..."
+                                docker network connect ${NETWORK_NAME} rabbitmq
+                            fi
+                        fi
+                        
+                        # Verificar status
+                        docker ps | grep rabbitmq
+                    """
+            }
+
+            stage('Notify User for Approval') {
+                steps {
+                    emailext (
+                            subject: "LMSUsers Jenkins Pipeline - Deployment Ready",
+                            body: """The LMSUsers Jenkins pipeline has successfully built and pushed the Docker image.
+                                Please approve the deployment in Jenkins [here](${BUILD_URL}input/) to continue.""",
+                            to: 'ljsilva.2002@gmail.com'
+                    )
+                }
+            }
+
+            stage('Wait for Approval') {
+                steps {
+                    script {
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                            echo "The pipeline is waiting for your approval. Please click on the link below to proceed or abort the deployment."
+                            def userInput = input(
+                                    message: "Do you want to proceed with the deployment?",
+                                    parameters: [
+                                            choice(name: 'Approve Deployment', choices: ['Yes', 'No'], description: 'Select Yes to continue or No to abort.')
+                                    ]
+                            )
+                            if (userInput == 'No') {
+                                currentBuild.result = 'ABORTED'
+                                error("Deployment aborted by user.")
+                            }
+                        }
+                    }
+                }
+            }
+
+            stage('Deploy with run.sh') {
+                steps {
+                echo 'Executando deployment...'
+                dir("${SERVICE_NAME}") {
+                    sh """
+                        if [ -f ./runVM.sh ]; then
+                            bash ./runVM.sh 1
+                        else
+                            echo "Erro: runVM.sh não encontrado"
+                            exit 1
+                        fi
+                    """
+            }
+
+            stage('Scale Up/Down') {
+                steps {
+                    script {
+                        def scaleCount = input(
+                        message: 'Quantas instâncias deseja escalar?',
+                        parameters: [
+                            choice(name: 'COUNT', choices: ['1', '2', '3', '4', '5'], 
+                                   description: 'Número de instâncias do serviço')
+                        ]
+                    )
+
+                    echo "Escalando para ${scaleCount} instâncias..."
+                    dir("${SERVICE_NAME}") {
+            }
+
+            stage('Shutdown Microservices with shutdown.sh') {
+                steps {
+                    dir('lms-authors') {
+                        sh 'bash ./shutdown.sh'  // Executa o script no Ubuntu
+                    }
+                }
+            }
+        }
+
+
+        post {
+            success {
+                echo 'Pipeline completed successfully!'
+                echo "Email recipient: ${RECIPIENT_EMAIL}"
+                emailext (
+                        subject: "Service ${IMAGE_NAME} Deployed for Approval - VM Automatic message",
+                        body: """
+                                    Hello,
+
+                                    The service has been deployed successfully.
+
+                                    You can access it using the following link: ${RUN_TESTS_DISPLAY_URL}.
+
+                                    Please review and provide your feedback.
+
+                                    Regards,
+                                    Jenkins
+                                    """,
+                        to: "ljsilva.2002@gmail.com",
+                        from: "ljsilva.2002@gmail.com",
+                )
+            }
+            failure {
+                echo 'Pipeline failed!'
+
+                echo "Email recipient: ${RECIPIENT_EMAIL}"
+
+                emailext (
+                        subject: "Pipeline ${IMAGE_NAME} Failed - VM Automatic message",
+                        body: """
+                            Hello,
+
+                            The pipeline execution failed. Please check Jenkins logs for more details.
+
+                            You can access it using the following link: ${RUN_TESTS_DISPLAY_URL}.
+
+                            Regards,
+                            Jenkins
+                            """,
+                        to: "ljsilva.2002@gmail.com",
+                        from: "ljsilva.2002@gmail.com",
+                )
+            }
+        }
+
+        // Caso precise limpar os contêineres após a execução
+        /*
+        post {
+            always {
+                echo 'Cleaning up...'
+                bat """
+                    docker-compose -f docker-compose.yml down || echo "Nothing to clean."
+                """
+            }
+        }
+        */
+    }
