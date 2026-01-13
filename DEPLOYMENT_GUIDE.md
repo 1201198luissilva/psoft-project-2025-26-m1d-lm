@@ -159,6 +159,12 @@ docker run -d \
 
 # Get initial admin password
 docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+
+# Fix Docker socket permissions (REQUIRED)
+docker exec -u root jenkins chmod 666 /var/run/docker.sock
+
+# Verify Docker access from Jenkins
+docker exec jenkins docker ps
 ```
 
 **Option B: Native Installation**
@@ -1024,12 +1030,22 @@ docker stop $(docker ps -q)
 
 ### Issue 4: Jenkins Can't Access Docker
 ```bash
-# If Jenkins is in Docker, ensure socket is mounted
-docker run -v /var/run/docker.sock:/var/run/docker.sock ...
+# Check if Jenkins can see Docker socket
+docker exec jenkins ls -l /var/run/docker.sock
 
-# Give Jenkins user docker permissions
-sudo usermod -aG docker jenkins
-sudo systemctl restart jenkins
+# Fix permissions (quick solution)
+docker exec -u root jenkins chmod 666 /var/run/docker.sock
+
+# Permanent solution: Add Jenkins user to docker group
+# Get docker GID from host
+getent group docker | cut -d: -f3
+
+# Add group in container with same GID
+docker exec -u root jenkins groupadd -g <GID> docker
+docker exec -u root jenkins usermod -aG docker jenkins
+
+# Restart Jenkins container
+docker restart jenkins
 ```
 
 ### Issue 5: Maven Build Fails
