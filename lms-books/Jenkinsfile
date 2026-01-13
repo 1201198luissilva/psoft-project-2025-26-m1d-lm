@@ -230,7 +230,9 @@ pipeline {
                             HEALTH_CHECK_FAILED=0
                             
                             # Testar instância 1 (porta 9003)
-                            if curl -f -s -o /dev/null -w "%{http_code}" http://localhost:9003/actuator/health | grep -q "200"; then
+                            HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9003/actuator/health)
+                            echo "Status code instância 1: \$HTTP_CODE"
+                            if [ "\$HTTP_CODE" = "200" ]; then
                                 echo "✓ Instância 1 (porta 9003) - SAUDÁVEL"
                             else
                                 echo "✗ Instância 1 (porta 9003) - FALHA NO HEALTH CHECK"
@@ -239,7 +241,9 @@ pipeline {
                             
                             # Testar instância 2 (porta 9004) se existir
                             if docker-compose ps | grep -q "books2_in_lms_network"; then
-                                if curl -f -s -o /dev/null -w "%{http_code}" http://localhost:9004/actuator/health | grep -q "200"; then
+                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9004/actuator/health)
+                                echo "Status code instância 2: \$HTTP_CODE"
+                                if [ "\$HTTP_CODE" = "200" ]; then
                                     echo "✓ Instância 2 (porta 9004) - SAUDÁVEL"
                                 else
                                     echo "✗ Instância 2 (porta 9004) - FALHA NO HEALTH CHECK"
