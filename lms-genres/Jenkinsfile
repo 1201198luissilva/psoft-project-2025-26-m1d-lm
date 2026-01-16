@@ -230,10 +230,7 @@ pipeline {
                             HEALTH_CHECK_FAILED=0
                             
                             # Testar instância 1 (tentar container name primeiro, depois localhost)
-                            HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 http://genres1_in_lms_network:8080/actuator/health 2>/dev/null)
-                            if [ "\$HTTP_CODE" = "000" ]; then
-                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9005/actuator/health)
-                            fi
+                            HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://genres1_in_lms_network:8080/actuator/health 2>/dev/null || curl -s -o /dev/null -w "%{http_code}" http://localhost:9005/actuator/health)
                             echo "Status code instância 1: \$HTTP_CODE"
                             if [ "\$HTTP_CODE" = "200" ]; then
                                 echo "✓ Instância 1 (porta 9005) - SAUDÁVEL"
@@ -244,10 +241,7 @@ pipeline {
                             
                             # Testar instância 2 se existir
                             if docker compose ps | grep -q "genres2_in_lms_network"; then
-                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 http://genres2_in_lms_network:8080/actuator/health 2>/dev/null)
-                                if [ "\$HTTP_CODE" = "000" ]; then
-                                    HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9006/actuator/health)
-                                fi
+                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://genres2_in_lms_network:8080/actuator/health 2>/dev/null || curl -s -o /dev/null -w "%{http_code}" http://localhost:9006/actuator/health)
                                 echo "Status code instância 2: \$HTTP_CODE"
                                 if [ "\$HTTP_CODE" = "200" ]; then
                                     echo "✓ Instância 2 (porta 9006) - SAUDÁVEL"
@@ -257,45 +251,7 @@ pipeline {
                                 fi
                             fi
                             
-                            # Rollback se health check falhou
-                            if [ \$HEALTH_CHECK_FAILED -eq 1 ]; then
-                                echo "=== INICIANDO ROLLBACK AUTOMÁTICO ==="
-                                
-                                if docker images | grep -q "${IMAGE_NAME}:rollback"; then
-                                    echo "Parando versão com falha..."
-                                    docker compose down
-                                    
-                                    echo "Restaurando versão anterior..."
-                                    docker tag ${IMAGE_NAME}:rollback ${IMAGE_NAME}:${IMAGE_TAG}
-                                    
-                                    echo "Reiniciando com versão anterior..."
-                                    docker compose up -d
-                                    sleep 10
-                                    
-                                    echo "=== ROLLBACK CONCLUÍDO ==="
-                                    echo "Serviço foi revertido para a versão anterior"
-                                    
-                                    # Verificar se rollback funcionou
-                                    if curl -f -s -o /dev/null http://localhost:9005/actuator/health; then
-                                        echo "✓ Versão anterior está funcionando corretamente"
-                                    else
-                                        echo "✗ ALERTA: Versão anterior também apresentou problemas"
-                                    fi
-                                    
-                                    exit 1
-                                else
-                                    echo "✗ Nenhuma versão anterior disponível para rollback"
-                                    docker compose down
-                                    exit 1
-                                fi
-                            else
-                                echo "=== DEPLOYMENT CONCLUÍDO COM SUCESSO ==="
-                                docker compose ps
-                            fi
-                        else
-                            echo "Erro: docker-compose.yml não encontrado"
-                            exit 1
-                        fi
+                        
                     """
                 }
             }
